@@ -19,45 +19,49 @@ export async function searchFood(
 
   const results: FoodSearchResult[] = [];
 
-  // Parse search results - MFP uses a list or table format
-  $(".food-search-results li, .search-results tr, ul.results li").each((_, element) => {
+  // MFP uses li.matched-food for search results
+  $("li.matched-food").each((_, element) => {
     const $el = $(element);
 
-    // Try different selectors for the food link/name
-    const foodLink = $el.find("a.food-link, a[href*='/food/item'], .food-title a").first();
-    if (foodLink.length === 0) return;
-
+    // Get the food link - contains ID and name
+    const foodLink = $el.find("a").first();
     const href = foodLink.attr("href") || "";
-    const idMatch = href.match(/\/food\/(?:item|calorie-chart)\/(\d+)/);
+
+    // Extract ID from href like /food/calories-nutrition/generic/banana
+    const idMatch = href.match(/\/food\/[^/]+\/([^/?]+)/);
     const id = idMatch ? idMatch[1] : "";
 
     if (!id) return;
 
-    const fullName = foodLink.text().trim();
+    // Get the food name and details
+    const title = $el.find(".food-title, .title").text().trim() || foodLink.text().trim();
+    const nutritionInfo = $el.find(".nutritional-info, .nutrition").text().trim();
 
-    // Parse brand and name
-    let name = fullName;
+    // Parse name - sometimes includes "Brand - Name"
+    let name = title;
     let brand: string | undefined;
 
-    if (fullName.includes(" - ")) {
-      const parts = fullName.split(" - ");
+    if (title.includes(" - ")) {
+      const parts = title.split(" - ");
       brand = parts[0].trim();
       name = parts.slice(1).join(" - ").trim();
     }
 
-    // Get nutritional info and serving size
-    const nutritionText = $el.find(".nutritional-info, .nutrition, .calories").text();
-    const calories = parseNumber(nutritionText) || 0;
+    // Parse calories from nutrition info
+    const caloriesMatch = nutritionInfo.match(/(\d+)\s*cal/i);
+    const calories = caloriesMatch ? parseInt(caloriesMatch[1]) : 0;
 
-    const servingText = $el.find(".serving-size, .serving, .portion").text().trim();
-    const servingSize = servingText || "1 serving";
+    // Get serving size
+    const servingSize = $el.find(".serving-size, .serving").text().trim() ||
+                        nutritionInfo.replace(/\d+\s*cal.*/i, "").trim() ||
+                        "1 serving";
 
     // Check for verified badge
-    const verified = $el.find(".verified, .checkmark, svg.verified").length > 0;
+    const verified = $el.find(".verified, .checkmark, .mfp-verified").length > 0;
 
     results.push({
       id,
-      name,
+      name: name || title,
       brand,
       calories,
       servingSize,
@@ -66,14 +70,11 @@ export async function searchFood(
   });
 
   // Check for pagination
-  const totalResultsText = $(".total-results, .results-count").text();
-  const totalResults = parseNumber(totalResultsText) || results.length;
-
   const hasNextPage = $("a.next, .pagination .next, a[rel='next']").length > 0;
 
   return {
     results,
-    totalResults,
+    totalResults: results.length,
     page,
     hasMore: hasNextPage,
   };

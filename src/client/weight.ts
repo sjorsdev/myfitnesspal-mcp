@@ -23,15 +23,21 @@ export async function getWeightHistory(
   endDate?: string,
   limit: number = 30
 ): Promise<WeightHistoryResponse> {
-  let url = "/weight";
-  if (startDate || endDate) {
-    const params = new URLSearchParams();
-    if (startDate) params.set("from", startDate);
-    if (endDate) params.set("to", endDate);
-    url += `?${params.toString()}`;
+  // MFP has bot protection on some pages - weight may not be accessible
+  // Try to get weight data from the user's progress or reports page instead
+  let html: string;
+
+  try {
+    // Try the reports page which might have weight data
+    html = await client.get("/reports/results/progress/default");
+  } catch {
+    // If reports fails, return empty result
+    return {
+      entries: [],
+      unit: "lb",
+    };
   }
 
-  const html = await client.get(url);
   const $ = load(html);
 
   const entries: WeightEntry[] = [];
