@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-MCP (Model Context Protocol) server providing access to MyFitnessPal nutrition data. Designed to be publishable to npm and runnable via `npx`.
+MCP (Model Context Protocol) server providing access to MyFitnessPal nutrition data. Publishable to npm as `@mcp-collections/myfitnesspal`.
 
 ## Tech Stack
 
@@ -12,10 +12,8 @@ MCP (Model Context Protocol) server providing access to MyFitnessPal nutrition d
 - **Language**: TypeScript 5.x
 - **Package Manager**: pnpm
 - **MCP SDK**: `@modelcontextprotocol/sdk`
-- **HTTP/Scraping**: `playwright` (authenticated browser sessions)
 - **HTML Parsing**: `cheerio`
 - **Validation**: `zod`
-- **Cookie Storage**: `keytar` (OS keychain) with encrypted file fallback
 - **Build**: `tsup`
 
 ## Commands
@@ -25,8 +23,7 @@ pnpm install          # Install dependencies
 pnpm build            # Build with tsup
 pnpm dev              # Build in watch mode
 pnpm start            # Run the MCP server
-pnpm auth             # Authenticate with MyFitnessPal
-pnpm test             # Run tests with vitest
+node dist/cli.js test # Test connection with cookie
 pnpm lint             # Lint with eslint
 pnpm typecheck        # Type check without emit
 ```
@@ -34,50 +31,72 @@ pnpm typecheck        # Type check without emit
 ## Architecture
 
 ### Entry Points
-- `src/index.ts` - Main entry, MCP server setup
-- `bin/cli.ts` - CLI entry for npx (`serve`, `auth`, `logout`, `test` commands)
+- `src/index.ts` - Main exports for the library
+- `src/server.ts` - MCP server creation and tool handlers
+- `bin/cli.ts` - CLI entry for npx (`serve`, `test` commands)
 
 ### Core Modules
 
 **Authentication (`src/auth/`)**
-- `cookie-store.ts` - Cookie persistence via keytar/encrypted file
-- `login.ts` - Playwright browser login flow
-- `session.ts` - Session management, cookie refresh
+- `index.ts` - Cookie loading from `MFP_COOKIE` env variable
 
 **MFP Client (`src/client/`)**
-- `http.ts` - HTTP client with cookie injection
+- `http.ts` - HTTP client with cookie injection, session validation
 - `diary.ts` - Diary/food log scraping from `/food/diary?date=YYYY-MM-DD`
-- `goals.ts` - Goals scraping from `/account/my-goals`
+- `goals.ts` - Goals extraction from diary page
 - `food-search.ts` - Food database search from `/food/search?search=QUERY`
 - `weight.ts` - Weight history from `/weight`
+- `summary.ts` - Aggregated nutrition over date range
+- `log-food.ts` - Add food entry to diary (requires CSRF handling)
 
-**MCP Tools (`src/tools/`)**
-- `get-diary.ts` - Food diary entries for a date
-- `get-goals.ts` - User's daily nutrition goals
-- `search-food.ts` - Search MFP food database
-- `log-food.ts` - Add food entry (requires CSRF handling)
-- `get-weight.ts` - Weight tracking history
-- `get-summary.ts` - Aggregated nutrition over date range
+**Types (`src/types/`)**
+- `index.ts` - All TypeScript interfaces for diary, meals, nutrition, etc.
 
-### Authentication Flow
+**Utils (`src/utils/`)**
+- `date.ts` - Date formatting and parsing helpers
+- `errors.ts` - Custom error classes (AuthenticationError, SessionExpiredError, etc.)
 
-1. User runs `npx @scope/mcp-myfitnesspal auth`
-2. Playwright opens browser to MFP login
-3. User logs in manually (handles 2FA, captcha)
-4. Cookies extracted and stored in OS keychain (or encrypted file fallback)
-5. MFP cookies expire after ~30 days; handle 401/redirects by prompting re-auth
+### MCP Tools
 
-### MCP Server Pattern
+| Tool | Description | Read-only mode |
+|------|-------------|----------------|
+| `get_diary` | Food diary entries for a date | Yes |
+| `get_goals` | User's daily nutrition goals | Yes |
+| `search_food` | Search MFP food database | Yes |
+| `get_weight_history` | Weight tracking history | Yes |
+| `get_nutrition_summary` | Aggregated nutrition over date range | Yes |
+| `log_food` | Add food entry to diary | No (disabled in read-only) |
 
-Uses `@modelcontextprotocol/sdk` with stdio transport:
-- `ListToolsRequestSchema` handler returns tool definitions
-- `CallToolRequestSchema` handler dispatches to tool implementations
-- All tools return structured JSON responses
+### Read-Only Mode
+
+Start the server with `--read-only` flag to disable write operations:
+```bash
+node dist/cli.js serve --read-only
+```
+
+### Environment Variables
+
+- `MFP_COOKIE` - Required. MyFitnessPal session cookie from browser
+
+### Claude Desktop Configuration
+
+```json
+{
+  "mcpServers": {
+    "myfitnesspal": {
+      "command": "npx",
+      "args": ["@mcp-collections/myfitnesspal"],
+      "env": {
+        "MFP_COOKIE": "your_cookie_here"
+      }
+    }
+  }
+}
+```
 
 ## Key Implementation Notes
 
-- All HTML scraping uses Cheerio for parsing
-- Handle CSRF tokens for mutation operations (log_food)
-- Add rate limiting between requests
-- Cache repeated requests for performance
-- Session validation on each request with graceful expiry handling
+- All HTML scraping uses Cheerio's `load()` function
+- Session validation checks for login page redirects (302 to /account/login)
+- The `log_food` tool requires CSRF token extraction from the food item page
+- Nutrition summary fetches each day's diary and aggregates (with 200ms delay to avoid rate limiting)
