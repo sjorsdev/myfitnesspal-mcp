@@ -4,7 +4,7 @@
   "description": "MCP server for MyFitnessPal nutrition tracking",
   "type": "module",
   "bin": {
-    "mcp-myfitnesspal": "./dist/cli.js"
+    "mcp-myfitnesspal": "dist/cli.js"
   },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -49,7 +49,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/sjorsengels/myfitnesspal-mcp.git"
+    "url": "git+https://github.com/sjorsdev/myfitnesspal-mcp.git"
   },
   "publishConfig": {
     "access": "public"
